@@ -47,20 +47,6 @@ Quien recibe el link ve un banner con dos opciones: **Copiar a mi canvas** (reem
 | `Delete` / `Backspace` | Borrar el elemento seleccionado |
 | `Escape` | Deseleccionar o cerrar modal |
 
-## Uso
-
-Abrir `index.html` en el navegador. No hay nada más que hacer.
-
-## Deploy
-
-Funciona en cualquier hosting estático (GitHub Pages, Vercel, Netlify) o directamente desde el filesystem.
-
-Para publicarlo en GitHub Pages:
-
-1. Subir el repo a GitHub.
-2. En **Settings → Pages**, elegir branch `main` y carpeta `/ (root)`.
-3. La página queda disponible en `https://<usuario>.github.io/<repo>/`.
-
 ## Tech
 
 Un único archivo `index.html` con HTML, CSS y JavaScript vanilla. Sin dependencias, sin build, sin servidor. Los datos del canvas viven en `localStorage` y los links de compartir codifican el estado en base64 url-safe dentro del query param `?c=`.
