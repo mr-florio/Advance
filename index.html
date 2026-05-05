@@ -1,0 +1,2182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Avance del año</title>
+  <meta name="description" content="Visualizá qué porcentaje del año transcurrió. Una barra de progreso simple y siempre actualizada.">
+
+  <meta property="og:title" content="Avance del año">
+  <meta property="og:description" content="Visualizá qué porcentaje del año transcurrió. Una barra de progreso simple y siempre actualizada.">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="es_AR">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Avance del año">
+  <meta name="twitter:description" content="Visualizá qué porcentaje del año transcurrió. Una barra de progreso simple y siempre actualizada.">
+
+  <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📊</text></svg>'>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #fafafa;
+      color: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      padding-right: calc(2rem + 72px);
+      -webkit-font-smoothing: antialiased;
+      transition: padding-right 0.25s ease;
+      overflow: hidden;
+    }
+
+    body.sidebar--hidden { padding-right: 2rem; }
+
+    .card {
+      width: 100%;
+      max-width: 640px;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .title {
+      font-size: 1rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin: 0 0 1.5rem;
+    }
+
+    .percentage {
+      font-size: clamp(2.5rem, 8.5vw, 4.5rem);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin: 0 0 1.4rem;
+    }
+
+    .percentage .symbol {
+      font-weight: 400;
+      color: #6b7280;
+      margin-left: 0.25rem;
+    }
+
+    .bar {
+      width: 100%;
+      height: 12px;
+      background: #e5e7eb;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      background: #1f2937;
+      border-radius: 999px;
+      transition: width 0.6s ease;
+    }
+
+    .days {
+      margin-top: 1.5rem;
+      font-size: 0.95rem;
+      color: #6b7280;
+    }
+
+    .days .sep {
+      margin: 0 0.6rem;
+      color: #d1d5db;
+    }
+
+    .date {
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      color: #9ca3af;
+    }
+
+    .date::first-letter {
+      text-transform: uppercase;
+    }
+
+    /* === Canvas (capa de elementos del usuario) === */
+    #canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    #canvas .el {
+      position: absolute;
+      pointer-events: auto;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+    }
+
+    #canvas .el.is-dragging { cursor: grabbing; }
+
+    #canvas .el.is-selected {
+      outline: 2px solid #2563eb;
+      outline-offset: 2px;
+    }
+
+    #canvas .el--image img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: none;
+      -webkit-user-drag: none;
+      border-radius: 4px;
+    }
+
+    #canvas .el--text {
+      padding: 0.25rem 0.5rem;
+      white-space: pre-wrap;
+      min-width: 1ch;
+      min-height: 1em;
+      line-height: 1.3;
+      font-family: inherit;
+      font-weight: 500;
+    }
+
+    #canvas .el--text[contenteditable="true"] {
+      cursor: text;
+      outline: 2px dashed #2563eb;
+      user-select: text;
+    }
+
+    .resize-handle {
+      position: absolute;
+      right: -7px;
+      bottom: -7px;
+      width: 14px;
+      height: 14px;
+      background: #2563eb;
+      border: 2px solid white;
+      border-radius: 3px;
+      cursor: nwse-resize;
+      display: none;
+      touch-action: none;
+    }
+
+    .btn-delete {
+      position: absolute;
+      right: -10px;
+      top: -10px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #ef4444;
+      color: white;
+      border: 2px solid white;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: none;
+      padding: 0;
+      font-family: inherit;
+    }
+
+    .color-input {
+      position: absolute;
+      top: -34px;
+      left: 0;
+      width: 28px;
+      height: 28px;
+      padding: 2px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      display: none;
+    }
+
+    .el.is-selected .resize-handle,
+    .el.is-selected .btn-delete,
+    .el:hover .resize-handle,
+    .el:hover .btn-delete {
+      display: block;
+    }
+
+    .el--text.is-selected .color-input { display: block; }
+
+    /* Mientras se edita texto, ocultar los controles auxiliares */
+    .el--text[contenteditable="true"] .resize-handle,
+    .el--text[contenteditable="true"] .btn-delete,
+    .el--text[contenteditable="true"] .color-input {
+      display: none !important;
+    }
+
+    /* === Sidebar === */
+    #sidebar {
+      position: fixed;
+      right: 0;
+      top: 4rem;
+      bottom: 1rem;
+      width: 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 0;
+      background: rgba(255, 255, 255, 0.85);
+      -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(8px);
+      border-radius: 14px 0 0 14px;
+      border: 1px solid #e5e7eb;
+      border-right: none;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+      z-index: 1000;
+      transition: transform 0.25s ease;
+    }
+
+    #sidebar button {
+      width: 44px;
+      height: 44px;
+      border: none;
+      border-radius: 10px;
+      background: transparent;
+      font-size: 1.35rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1a1a1a;
+      transition: background 0.15s ease;
+      font-family: inherit;
+      font-weight: 600;
+    }
+
+    #sidebar button:hover { background: #f3f4f6; }
+    #sidebar button:active { background: #e5e7eb; }
+
+    #sidebar #btn-theme {
+      margin-top: auto;
+      width: 36px;
+      height: 36px;
+      font-size: 1.05rem;
+      opacity: 0.85;
+    }
+    #sidebar #btn-theme:hover { opacity: 1; }
+
+    #btn-toggle {
+      position: fixed;
+      right: 0.75rem;
+      top: 0.75rem;
+      width: 36px;
+      height: 36px;
+      border: 1px solid #e5e7eb;
+      border-radius: 50%;
+      background: white;
+      cursor: pointer;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1001;
+      transition: transform 0.25s ease;
+      color: #6b7280;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+      font-family: inherit;
+    }
+
+    #btn-toggle:hover { color: #1a1a1a; }
+
+    body.sidebar--hidden #sidebar { transform: translateX(110%); }
+    body.sidebar--hidden #btn-toggle { transform: rotate(180deg); }
+
+    /* === Toast === */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 0.75rem 1.25rem;
+      background: #1f2937;
+      color: white;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+      z-index: 2000;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      pointer-events: none;
+      max-width: 90vw;
+      text-align: center;
+    }
+
+    #toast.is-shown { opacity: 1; }
+
+    /* === Tarjeta de evento (cuenta regresiva) === */
+    #canvas .el--event {
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 1.1em 1.6em 1.25em;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+      text-align: center;
+      min-width: 11em;
+      font-size: 18px;
+    }
+
+    #canvas .el--event .event-num {
+      font-size: 4em;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      color: #1a1a1a;
+    }
+
+    #canvas .el--event .event-label {
+      margin-top: 0.45em;
+      font-size: 0.95em;
+      color: #6b7280;
+      line-height: 1.3;
+    }
+
+    #canvas .el--event.is-past .event-num,
+    #canvas .el--event.is-past .event-label {
+      color: #9ca3af;
+    }
+
+    /* === Tarjeta de checklist === */
+    #canvas .el--checklist {
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 0.9em 1.1em 0.7em;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+      min-width: 12em;
+      max-width: 22em;
+      font-size: 16px;
+    }
+
+    #canvas .el--checklist .checklist-name {
+      font-weight: 600;
+      font-size: 1.05em;
+      color: #1a1a1a;
+      margin-bottom: 0.5em;
+      padding: 0.1em 0.25em;
+      border-radius: 4px;
+      outline: none;
+      word-break: break-word;
+    }
+
+    #canvas .el--checklist .checklist-name[contenteditable="true"] {
+      outline: 2px dashed #2563eb;
+      cursor: text;
+      user-select: text;
+    }
+
+    #canvas .el--checklist .checklist-tasks {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1em;
+    }
+
+    #canvas .el--checklist .checklist-task {
+      display: flex;
+      align-items: center;
+      gap: 0.55em;
+      padding: 0.25em 0.4em;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+
+    #canvas .el--checklist .checklist-task:hover {
+      background: #f3f4f6;
+    }
+
+    #canvas .el--checklist .task-check {
+      width: 1em;
+      height: 1em;
+      border: 2px solid #9ca3af;
+      border-radius: 4px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75em;
+      color: white;
+      background: white;
+      line-height: 1;
+      transition: all 0.12s ease;
+    }
+
+    #canvas .el--checklist .checklist-task.is-done .task-check {
+      background: #2563eb;
+      border-color: #2563eb;
+    }
+
+    #canvas .el--checklist .checklist-task.is-done .task-check::after {
+      content: '✓';
+      font-weight: 700;
+    }
+
+    #canvas .el--checklist .task-text {
+      flex: 1;
+      color: #1a1a1a;
+      padding: 0.05em 0.2em;
+      border-radius: 4px;
+      outline: none;
+      word-break: break-word;
+    }
+
+    #canvas .el--checklist .checklist-task.is-done .task-text {
+      text-decoration: line-through;
+      color: #9ca3af;
+    }
+
+    #canvas .el--checklist .task-text[contenteditable="true"] {
+      outline: 2px dashed #2563eb;
+      cursor: text;
+      user-select: text;
+    }
+
+    #canvas .el--checklist .task-remove {
+      border: none;
+      background: transparent;
+      color: #9ca3af;
+      font-size: 1em;
+      line-height: 1;
+      width: 1.4em;
+      height: 1.4em;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 0;
+      visibility: hidden;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    #canvas .el--checklist .checklist-task:hover .task-remove {
+      visibility: visible;
+    }
+
+    #canvas .el--checklist .task-remove:hover {
+      background: #fee2e2;
+      color: #ef4444;
+    }
+
+    #canvas .el--checklist .checklist-add {
+      margin-top: 0.5em;
+      border: none;
+      background: transparent;
+      color: #2563eb;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.9em;
+      padding: 0.3em 0.4em;
+      border-radius: 6px;
+      text-align: left;
+      width: 100%;
+    }
+
+    #canvas .el--checklist .checklist-add:hover {
+      background: rgba(37, 99, 235, 0.08);
+    }
+
+    /* === Modal === */
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      -webkit-backdrop-filter: blur(2px);
+      backdrop-filter: blur(2px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+      padding: 1rem;
+    }
+
+    .modal[hidden] { display: none; }
+
+    .modal-card {
+      background: white;
+      border-radius: 14px;
+      padding: 1.75rem;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+    }
+
+    .modal-card h2 {
+      margin: 0 0 1.25rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+
+    .modal-field {
+      display: block;
+      margin-bottom: 1rem;
+    }
+
+    .modal-field span {
+      display: block;
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-bottom: 0.35rem;
+    }
+
+    .modal-field input {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font: inherit;
+      color: #1a1a1a;
+      background: white;
+    }
+
+    .modal-field input:focus {
+      outline: 2px solid #2563eb;
+      outline-offset: -1px;
+      border-color: transparent;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      margin-top: 1.5rem;
+    }
+
+    .modal-actions button {
+      padding: 0.55rem 1.1rem;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 500;
+      transition: background 0.15s ease;
+    }
+
+    #event-cancel { background: transparent; color: #6b7280; }
+    #event-cancel:hover { background: #f3f4f6; color: #1a1a1a; }
+    #event-submit { background: #2563eb; color: white; }
+    #event-submit:hover { background: #1d4ed8; }
+    #event-submit:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    /* === Modal de compartir === */
+    .share-hint {
+      margin: 0 0 1rem;
+      font-size: 0.85rem;
+      color: #6b7280;
+      line-height: 1.45;
+    }
+    .share-hint strong { color: #1a1a1a; font-weight: 600; }
+
+    .share-empty {
+      margin: 0.5rem 0 0;
+      font-size: 0.85rem;
+      color: #6b7280;
+      padding: 0.75rem 0.9rem;
+      background: #f9fafb;
+      border: 1px dashed #d1d5db;
+      border-radius: 8px;
+    }
+
+    .modal-field textarea {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      color: #1a1a1a;
+      background: #f9fafb;
+      resize: none;
+      word-break: break-all;
+      line-height: 1.45;
+    }
+    .modal-field textarea:focus {
+      outline: 2px solid #2563eb;
+      outline-offset: -1px;
+      border-color: transparent;
+    }
+
+    #share-cancel { background: transparent; color: #6b7280; }
+    #share-cancel:hover { background: #f3f4f6; color: #1a1a1a; }
+    #share-copy { background: #2563eb; color: white; }
+    #share-copy:hover { background: #1d4ed8; }
+    #share-copy:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    /* === Modal de checklist === */
+    #checklist-modal .modal-card { max-width: 460px; }
+
+    #checklist-tasks-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .task-input-row {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+    }
+
+    .task-input-row input {
+      flex: 1;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font: inherit;
+      color: #1a1a1a;
+      background: white;
+    }
+
+    .task-input-row input:focus {
+      outline: 2px solid #2563eb;
+      outline-offset: -1px;
+      border-color: transparent;
+    }
+
+    .task-row-remove {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #9ca3af;
+      font-size: 1rem;
+      cursor: pointer;
+      flex-shrink: 0;
+      font-family: inherit;
+      line-height: 1;
+    }
+
+    .task-row-remove:hover {
+      background: #fee2e2;
+      color: #ef4444;
+    }
+
+    #checklist-add-task {
+      border: 1px dashed #d1d5db;
+      background: transparent;
+      color: #2563eb;
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.9rem;
+      width: 100%;
+      margin-top: 0.25rem;
+    }
+
+    #checklist-add-task:hover {
+      background: rgba(37, 99, 235, 0.06);
+      border-color: #2563eb;
+    }
+
+    #checklist-cancel { background: transparent; color: #6b7280; }
+    #checklist-cancel:hover { background: #f3f4f6; color: #1a1a1a; }
+    #checklist-submit { background: #2563eb; color: white; }
+    #checklist-submit:hover { background: #1d4ed8; }
+    #checklist-submit:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    /* === Banner de vista compartida === */
+    #share-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      padding: 0.6rem 1rem;
+      background: #2563eb;
+      color: white;
+      font-size: 0.88rem;
+      z-index: 1500;
+      box-shadow: 0 2px 10px rgba(37, 99, 235, 0.25);
+    }
+
+    #share-banner[hidden] { display: none; }
+
+    #share-banner-text { font-weight: 500; }
+
+    #share-banner button {
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      background: transparent;
+      color: white;
+      padding: 0.3rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: background 0.15s ease;
+    }
+
+    #share-banner button:hover { background: rgba(255, 255, 255, 0.18); }
+
+    body.shared-view #btn-toggle { top: 3.25rem; }
+    body.shared-view #sidebar { top: 6.25rem; }
+
+    /* === Modo oscuro === */
+    body.dark {
+      background: #0f172a;
+      color: #e5e7eb;
+      color-scheme: dark;
+    }
+
+    body.dark .title { color: #94a3b8; }
+    body.dark .percentage .symbol { color: #94a3b8; }
+    body.dark .bar { background: #1e293b; }
+    body.dark .bar-fill { background: #f1f5f9; }
+    body.dark .days { color: #94a3b8; }
+    body.dark .days .sep { color: #475569; }
+    body.dark .date { color: #64748b; }
+
+    body.dark #sidebar {
+      background: rgba(15, 23, 42, 0.85);
+      border-color: #334155;
+    }
+    body.dark #sidebar button { color: #e5e7eb; }
+    body.dark #sidebar button:hover { background: #1e293b; }
+    body.dark #sidebar button:active { background: #334155; }
+
+    body.dark #btn-toggle {
+      background: #1e293b;
+      border-color: #334155;
+      color: #94a3b8;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
+    body.dark #btn-toggle:hover { color: #f1f5f9; }
+
+    body.dark #canvas .el--event {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: #334155;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    }
+    body.dark #canvas .el--event .event-num { color: #f1f5f9; }
+    body.dark #canvas .el--event .event-label { color: #94a3b8; }
+    body.dark #canvas .el--event.is-past .event-num,
+    body.dark #canvas .el--event.is-past .event-label { color: #64748b; }
+
+    body.dark #canvas .el--checklist {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: #334155;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    }
+    body.dark #canvas .el--checklist .checklist-name { color: #f1f5f9; }
+    body.dark #canvas .el--checklist .checklist-task:hover { background: #334155; }
+    body.dark #canvas .el--checklist .task-text { color: #e5e7eb; }
+    body.dark #canvas .el--checklist .checklist-task.is-done .task-text { color: #64748b; }
+    body.dark #canvas .el--checklist .task-check { background: #0f172a; border-color: #475569; }
+    body.dark #canvas .el--checklist .task-remove { color: #64748b; }
+    body.dark #canvas .el--checklist .task-remove:hover { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+    body.dark #canvas .el--checklist .checklist-add { color: #60a5fa; }
+    body.dark #canvas .el--checklist .checklist-add:hover { background: rgba(96, 165, 250, 0.12); }
+
+    body.dark .modal { background: rgba(0, 0, 0, 0.6); }
+    body.dark .modal-card {
+      background: #1e293b;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+    }
+    body.dark .modal-card h2 { color: #f1f5f9; }
+    body.dark .modal-field span { color: #94a3b8; }
+    body.dark .modal-field input {
+      background: #0f172a;
+      border-color: #475569;
+      color: #f1f5f9;
+    }
+    body.dark .modal-field input::placeholder { color: #64748b; }
+    body.dark #event-cancel { color: #94a3b8; }
+    body.dark #event-cancel:hover { background: #334155; color: #f1f5f9; }
+
+    body.dark #toast {
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+
+    body.dark .share-hint { color: #94a3b8; }
+    body.dark .share-hint strong { color: #f1f5f9; }
+    body.dark .share-empty {
+      background: #0f172a;
+      border-color: #475569;
+      color: #94a3b8;
+    }
+    body.dark .modal-field textarea {
+      background: #0f172a;
+      border-color: #475569;
+      color: #f1f5f9;
+    }
+    body.dark #share-cancel { color: #94a3b8; }
+    body.dark #share-cancel:hover { background: #334155; color: #f1f5f9; }
+
+    body.dark .task-input-row input {
+      background: #0f172a;
+      border-color: #475569;
+      color: #f1f5f9;
+    }
+    body.dark .task-row-remove { color: #64748b; }
+    body.dark .task-row-remove:hover { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+    body.dark #checklist-add-task { color: #60a5fa; border-color: #475569; }
+    body.dark #checklist-add-task:hover { background: rgba(96, 165, 250, 0.12); border-color: #60a5fa; }
+    body.dark #checklist-cancel { color: #94a3b8; }
+    body.dark #checklist-cancel:hover { background: #334155; color: #f1f5f9; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <p class="title" id="title">Avance del año</p>
+    <div class="percentage">
+      <span id="percentage">0.00</span><span class="symbol">%</span>
+    </div>
+    <div class="bar" aria-hidden="true">
+      <div class="bar-fill" id="bar-fill"></div>
+    </div>
+    <p class="days">
+      <span id="elapsed">0</span> días transcurridos
+      <span class="sep">·</span>
+      <span id="remaining">0</span> restantes
+    </p>
+    <p class="date" id="date">—</p>
+  </main>
+
+  <div id="canvas"></div>
+
+  <aside id="sidebar">
+    <button id="btn-image" title="Agregar imagen (también podés pegar con Ctrl+V)">📷</button>
+    <button id="btn-text" title="Agregar texto">T</button>
+    <button id="btn-event" title="Agregar evento (cuenta regresiva)">📅</button>
+    <button id="btn-checklist" title="Agregar checklist">✅</button>
+    <button id="btn-share" title="Compartir canvas (textos, eventos y checklists)">📤</button>
+    <button id="btn-theme" title="Cambiar a modo oscuro">🌙</button>
+  </aside>
+  <button id="btn-toggle" title="Mostrar / ocultar panel (H)">›</button>
+  <input type="file" id="file-input" accept="image/*" hidden>
+
+  <div id="event-modal" class="modal" hidden aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-labelledby="event-modal-title" aria-modal="true">
+      <h2 id="event-modal-title">Nuevo evento</h2>
+      <label class="modal-field">
+        <span>Nombre del evento</span>
+        <input type="text" id="event-name" maxlength="80" autocomplete="off" placeholder="Ej: Cumpleaños de Marcos">
+      </label>
+      <label class="modal-field">
+        <span>Fecha</span>
+        <input type="date" id="event-date">
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="event-cancel">Cancelar</button>
+        <button type="button" id="event-submit">Crear</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="checklist-modal" class="modal" hidden aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-labelledby="checklist-modal-title" aria-modal="true">
+      <h2 id="checklist-modal-title">Nuevo checklist</h2>
+      <label class="modal-field">
+        <span>Nombre del checklist</span>
+        <input type="text" id="checklist-name-input" maxlength="80" autocomplete="off" placeholder="Ej: Tareas de la semana">
+      </label>
+      <div class="modal-field">
+        <span>Tareas</span>
+        <div id="checklist-tasks-list"></div>
+        <button type="button" id="checklist-add-task">+ Agregar tarea</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="checklist-cancel">Cancelar</button>
+        <button type="button" id="checklist-submit">Crear</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="share-modal" class="modal" hidden aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-labelledby="share-modal-title" aria-modal="true">
+      <h2 id="share-modal-title">Compartir canvas</h2>
+      <p class="share-hint" id="share-hint">
+        Cualquiera con este link va a ver tu canvas con los mismos textos, eventos y checklists en las mismas posiciones.
+        <br><strong>Las imágenes no se incluyen</strong> porque pesan demasiado para una URL.
+      </p>
+      <label class="modal-field">
+        <span>Link para compartir</span>
+        <textarea id="share-link" readonly rows="3"></textarea>
+      </label>
+      <p class="share-empty" id="share-empty" hidden>
+        Tu canvas no tiene textos, eventos ni checklists para compartir todavía. Agregá alguno desde el panel y volvé a probar.
+      </p>
+      <div class="modal-actions">
+        <button type="button" id="share-cancel">Cerrar</button>
+        <button type="button" id="share-copy">Copiar link</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="share-banner" hidden>
+    <span id="share-banner-text">Estás viendo un canvas compartido</span>
+    <button type="button" id="banner-keep" title="Reemplaza tu canvas actual con el contenido compartido">Copiar a mi canvas</button>
+    <button type="button" id="banner-close" title="Vuelve a tu canvas original">Cerrar vista</button>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    /* ============================================
+       Barra de progreso del año
+       ============================================ */
+    const titleEl = document.getElementById('title');
+    const percentageEl = document.getElementById('percentage');
+    const barFillEl = document.getElementById('bar-fill');
+    const elapsedEl = document.getElementById('elapsed');
+    const remainingEl = document.getElementById('remaining');
+    const dateEl = document.getElementById('date');
+
+    function updateProgress() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const start = new Date(year, 0, 1);
+      const end = new Date(year + 1, 0, 1);
+
+      const totalMs = end - start;
+      const elapsedMs = now - start;
+      const percentage = (elapsedMs / totalMs) * 100;
+
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const totalDays = Math.round(totalMs / msPerDay);
+      const elapsedDays = Math.floor(elapsedMs / msPerDay);
+      const remainingDays = totalDays - elapsedDays;
+
+      const pctText = percentage.toFixed(2);
+
+      titleEl.textContent = `Avance del año ${year}`;
+      percentageEl.textContent = pctText;
+      barFillEl.style.width = `${percentage}%`;
+      elapsedEl.textContent = elapsedDays;
+      remainingEl.textContent = remainingDays;
+      dateEl.textContent = now.toLocaleDateString('es-AR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+      document.title = `Avance del año — ${pctText}%`;
+    }
+
+    updateProgress();
+    setInterval(() => {
+      updateProgress();
+      updateAllEvents();
+    }, 60 * 1000);
+
+    /* ============================================
+       Canvas: imágenes y textos arrastrables
+       ============================================ */
+    const STORAGE_KEY = 'yearadvance:elements:v1';
+    const canvasEl = document.getElementById('canvas');
+    const fileInput = document.getElementById('file-input');
+    const btnImage = document.getElementById('btn-image');
+    const btnText = document.getElementById('btn-text');
+    const btnEvent = document.getElementById('btn-event');
+    const btnTheme = document.getElementById('btn-theme');
+    const btnToggle = document.getElementById('btn-toggle');
+    const toastEl = document.getElementById('toast');
+    const eventModal = document.getElementById('event-modal');
+    const eventNameInput = document.getElementById('event-name');
+    const eventDateInput = document.getElementById('event-date');
+    const eventCancelBtn = document.getElementById('event-cancel');
+    const eventSubmitBtn = document.getElementById('event-submit');
+    const btnChecklist = document.getElementById('btn-checklist');
+    const checklistModal = document.getElementById('checklist-modal');
+    const checklistNameInput = document.getElementById('checklist-name-input');
+    const checklistTasksList = document.getElementById('checklist-tasks-list');
+    const checklistAddTaskBtn = document.getElementById('checklist-add-task');
+    const checklistCancelBtn = document.getElementById('checklist-cancel');
+    const checklistSubmitBtn = document.getElementById('checklist-submit');
+    const btnShare = document.getElementById('btn-share');
+    const shareModal = document.getElementById('share-modal');
+    const shareLinkArea = document.getElementById('share-link');
+    const shareEmpty = document.getElementById('share-empty');
+    const shareHint = document.getElementById('share-hint');
+    const shareCancelBtn = document.getElementById('share-cancel');
+    const shareCopyBtn = document.getElementById('share-copy');
+    const shareBanner = document.getElementById('share-banner');
+    const shareBannerText = document.getElementById('share-banner-text');
+    const bannerKeepBtn = document.getElementById('banner-keep');
+    const bannerCloseBtn = document.getElementById('banner-close');
+
+    let elements = [];
+    let selectedId = null;
+    let zCounter = 0;
+    let saveTimer = null;
+    let toastTimer = null;
+    let viewingShared = false;
+
+    function load() {
+      const shared = tryParseShareFromURL();
+      if (shared) {
+        elements = shared;
+        viewingShared = true;
+      } else {
+        viewingShared = false;
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          elements = raw ? JSON.parse(raw) : [];
+        } catch {
+          elements = [];
+        }
+      }
+      zCounter = elements.reduce((m, e) => Math.max(m, e.z || 0), 0);
+    }
+
+    function save() {
+      if (viewingShared) return;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(elements));
+      } catch (err) {
+        if (err && err.name === 'QuotaExceededError') {
+          showToast('No hay más espacio para guardar. Eliminá alguna imagen pesada.');
+        } else {
+          showToast('No se pudo guardar.');
+        }
+      }
+    }
+
+    function saveSoon() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(save, 250);
+    }
+
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('is-shown');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('is-shown'), 3500);
+    }
+
+    function nextZ() { return ++zCounter; }
+    function uid() {
+      return (crypto.randomUUID && crypto.randomUUID()) || `id-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    function nextPosition(w, h) {
+      const cx = (window.innerWidth - w) / 2;
+      const cy = (window.innerHeight - h) / 2;
+      const offset = (elements.length % 8) * 22;
+      return { x: Math.max(20, cx + offset), y: Math.max(20, cy + offset) };
+    }
+
+    /* ---------- Compartir canvas vía URL ---------- */
+
+    const SHARE_PARAM = 'c';
+
+    function b64UrlEncode(str) {
+      const utf8 = unescape(encodeURIComponent(str));
+      return btoa(utf8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function b64UrlDecode(str) {
+      let s = str.replace(/-/g, '+').replace(/_/g, '/');
+      while (s.length % 4) s += '=';
+      return decodeURIComponent(escape(atob(s)));
+    }
+
+    function serializeForShare() {
+      const out = [];
+      for (const el of elements) {
+        if (el.type === 'text') {
+          out.push({
+            t: 't',
+            x: Math.round(el.x),
+            y: Math.round(el.y),
+            z: el.z || 0,
+            c: el.content || '',
+            s: Math.round(el.fontSize || 24),
+            col: el.color || '#1a1a1a',
+          });
+        } else if (el.type === 'event') {
+          out.push({
+            t: 'e',
+            x: Math.round(el.x),
+            y: Math.round(el.y),
+            z: el.z || 0,
+            n: el.eventName || '',
+            d: el.eventDate || '',
+            s: Math.round(el.fontSize || 18),
+          });
+        } else if (el.type === 'checklist') {
+          out.push({
+            t: 'l',
+            x: Math.round(el.x),
+            y: Math.round(el.y),
+            z: el.z || 0,
+            n: el.name || '',
+            s: Math.round(el.fontSize || 16),
+            ts: (el.tasks || []).map(t => ({ x: t.text || '', d: t.done ? 1 : 0 })),
+          });
+        }
+        // Imágenes deliberadamente omitidas: pesan demasiado para una URL
+      }
+      return out;
+    }
+
+    function deserializeShare(arr) {
+      const out = [];
+      for (const o of arr) {
+        if (!o || typeof o !== 'object') continue;
+        if (o.t === 't') {
+          out.push({
+            id: uid(),
+            type: 'text',
+            x: Number(o.x) || 0,
+            y: Number(o.y) || 0,
+            z: Number(o.z) || 0,
+            content: String(o.c || ''),
+            fontSize: Number(o.s) || 24,
+            color: String(o.col || '#1a1a1a'),
+          });
+        } else if (o.t === 'e') {
+          out.push({
+            id: uid(),
+            type: 'event',
+            x: Number(o.x) || 0,
+            y: Number(o.y) || 0,
+            z: Number(o.z) || 0,
+            eventName: String(o.n || ''),
+            eventDate: String(o.d || ''),
+            fontSize: Number(o.s) || 18,
+          });
+        } else if (o.t === 'l') {
+          const rawTasks = Array.isArray(o.ts) ? o.ts : [];
+          out.push({
+            id: uid(),
+            type: 'checklist',
+            x: Number(o.x) || 0,
+            y: Number(o.y) || 0,
+            z: Number(o.z) || 0,
+            name: String(o.n || ''),
+            fontSize: Number(o.s) || 16,
+            tasks: rawTasks.map(rt => ({
+              id: uid(),
+              text: String((rt && rt.x) || ''),
+              done: !!(rt && rt.d),
+            })),
+          });
+        }
+      }
+      return out;
+    }
+
+    function buildShareURL() {
+      const data = serializeForShare();
+      if (data.length === 0) return null;
+      const json = JSON.stringify(data);
+      const encoded = b64UrlEncode(json);
+      const base = window.location.origin && window.location.origin !== 'null'
+        ? window.location.origin + window.location.pathname
+        : window.location.href.split('?')[0].split('#')[0];
+      return `${base}?${SHARE_PARAM}=${encoded}`;
+    }
+
+    function tryParseShareFromURL() {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get(SHARE_PARAM);
+      if (!raw) return null;
+      try {
+        const json = b64UrlDecode(raw);
+        const arr = JSON.parse(json);
+        if (!Array.isArray(arr)) return null;
+        return deserializeShare(arr);
+      } catch {
+        return null;
+      }
+    }
+
+    function clearShareParam() {
+      const url = window.location.pathname;
+      window.history.replaceState(null, '', url);
+    }
+
+    /* ---------- Cuenta regresiva de eventos ---------- */
+
+    function eventCountdown(dateStr) {
+      const parts = (dateStr || '').split('-').map(Number);
+      const target = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const msPerDay = 86400000;
+      const msPerHour = 3600000;
+
+      const dayDiff = Math.round((target - today) / msPerDay);
+      const isPast = dayDiff < 0;
+      const isToday = dayDiff === 0;
+      const absDays = Math.abs(dayDiff);
+
+      let value, unit;
+      if (absDays >= 60) {
+        value = Math.round(absDays / 30.44);
+        unit = value === 1 ? 'mes' : 'meses';
+      } else if (absDays >= 2) {
+        value = absDays;
+        unit = value === 1 ? 'día' : 'días';
+      } else if (dayDiff === 1) {
+        const hours = Math.max(0, Math.floor((target - now) / msPerHour));
+        value = hours;
+        unit = value === 1 ? 'hora' : 'horas';
+      } else if (dayDiff === -1) {
+        value = 1;
+        unit = 'día';
+      } else {
+        value = 0;
+        unit = 'días';
+      }
+
+      return { value, unit, isPast, isToday };
+    }
+
+    function renderEventContent(el, data) {
+      const cd = eventCountdown(data.eventDate);
+      const numEl = el.querySelector('.event-num');
+      const labelEl = el.querySelector('.event-label');
+      if (!numEl || !labelEl) return;
+      const name = data.eventName || 'Evento';
+      if (cd.isToday) {
+        numEl.textContent = 'Hoy';
+        labelEl.textContent = name;
+      } else {
+        numEl.textContent = cd.value;
+        labelEl.textContent = cd.isPast
+          ? `${cd.unit} desde ${name}`
+          : `${cd.unit} para ${name}`;
+      }
+      el.classList.toggle('is-past', cd.isPast);
+    }
+
+    function updateAllEvents() {
+      for (const data of elements) {
+        if (data.type !== 'event') continue;
+        const el = canvasEl.querySelector(`[data-id="${data.id}"]`);
+        if (el) renderEventContent(el, data);
+      }
+    }
+
+    /* ---------- Render ---------- */
+
+    function renderAll() {
+      canvasEl.innerHTML = '';
+      for (const data of elements) renderElement(data);
+      applySelection();
+    }
+
+    function renderElement(data) {
+      const el = document.createElement('div');
+      el.className = `el el--${data.type}`;
+      el.dataset.id = data.id;
+      el.style.left = data.x + 'px';
+      el.style.top = data.y + 'px';
+      el.style.zIndex = data.z;
+
+      if (data.type === 'image') {
+        el.style.width = data.width + 'px';
+        el.style.height = data.height + 'px';
+        const img = document.createElement('img');
+        img.src = data.content;
+        img.alt = '';
+        img.draggable = false;
+        el.appendChild(img);
+      } else if (data.type === 'event') {
+        el.style.fontSize = (data.fontSize || 18) + 'px';
+        const num = document.createElement('div');
+        num.className = 'event-num';
+        num.contentEditable = 'false';
+        el.appendChild(num);
+        const label = document.createElement('div');
+        label.className = 'event-label';
+        label.contentEditable = 'false';
+        el.appendChild(label);
+        renderEventContent(el, data);
+      } else if (data.type === 'checklist') {
+        el.style.fontSize = (data.fontSize || 16) + 'px';
+        renderChecklistContent(el, data);
+        attachChecklistHandlers(el, data);
+      } else {
+        el.style.color = data.color || '#1a1a1a';
+        el.style.fontSize = (data.fontSize || 24) + 'px';
+        el.textContent = data.content;
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.className = 'color-input';
+        colorInput.value = data.color || '#1a1a1a';
+        colorInput.title = 'Color del texto';
+        colorInput.contentEditable = 'false';
+        colorInput.addEventListener('pointerdown', (e) => e.stopPropagation());
+        colorInput.addEventListener('input', () => {
+          data.color = colorInput.value;
+          el.style.color = colorInput.value;
+          saveSoon();
+        });
+        el.appendChild(colorInput);
+        attachEditHandlers(el, data);
+      }
+
+      const handle = document.createElement('div');
+      handle.className = 'resize-handle';
+      handle.contentEditable = 'false';
+      el.appendChild(handle);
+      attachResizeHandlers(el, handle, data);
+
+      const del = document.createElement('button');
+      del.className = 'btn-delete';
+      del.type = 'button';
+      del.textContent = '×';
+      del.title = 'Eliminar';
+      del.contentEditable = 'false';
+      del.addEventListener('pointerdown', (e) => e.stopPropagation());
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteElement(data.id);
+      });
+      el.appendChild(del);
+
+      attachDragHandlers(el, data);
+      canvasEl.appendChild(el);
+      return el;
+    }
+
+    /* ---------- Selección ---------- */
+
+    function applySelection() {
+      for (const el of canvasEl.querySelectorAll('.el')) {
+        el.classList.toggle('is-selected', el.dataset.id === selectedId);
+      }
+    }
+
+    function selectElement(id) {
+      selectedId = id;
+      const data = elements.find(e => e.id === id);
+      if (data) {
+        data.z = nextZ();
+        const el = canvasEl.querySelector(`[data-id="${id}"]`);
+        if (el) el.style.zIndex = data.z;
+        saveSoon();
+      }
+      applySelection();
+    }
+
+    function deselect() {
+      if (!selectedId) return;
+      selectedId = null;
+      applySelection();
+    }
+
+    /* ---------- Agregar elementos ---------- */
+
+    async function addImageFromFile(file) {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const compressed = await compressImage(reader.result);
+          const initWidth = Math.min(360, compressed.width);
+          const initHeight = initWidth * (compressed.height / compressed.width);
+          const pos = nextPosition(initWidth, initHeight);
+          const data = {
+            id: uid(),
+            type: 'image',
+            content: compressed.dataURL,
+            width: initWidth,
+            height: initHeight,
+            x: pos.x,
+            y: pos.y,
+            z: nextZ(),
+          };
+          elements.push(data);
+          save();
+          renderElement(data);
+          selectElement(data.id);
+        } catch {
+          showToast('No se pudo agregar la imagen.');
+        }
+      };
+      reader.onerror = () => showToast('No se pudo leer el archivo.');
+      reader.readAsDataURL(file);
+    }
+
+    function compressImage(dataURL, maxSide = 1600, quality = 0.85) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width: w, height: h } = img;
+          const longest = Math.max(w, h);
+          if (longest > maxSide) {
+            const k = maxSide / longest;
+            w = Math.round(w * k);
+            h = Math.round(h * k);
+          }
+          const c = document.createElement('canvas');
+          c.width = w;
+          c.height = h;
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve({ dataURL: c.toDataURL('image/jpeg', quality), width: w, height: h });
+        };
+        img.onerror = reject;
+        img.src = dataURL;
+      });
+    }
+
+    function addText() {
+      const pos = nextPosition(160, 40);
+      const data = {
+        id: uid(),
+        type: 'text',
+        content: 'Texto',
+        color: '#1a1a1a',
+        fontSize: 24,
+        x: pos.x,
+        y: pos.y,
+        z: nextZ(),
+      };
+      elements.push(data);
+      save();
+      const el = renderElement(data);
+      selectElement(data.id);
+      startEditing(el, data, true);
+    }
+
+    function addEvent(name, dateStr) {
+      const pos = nextPosition(240, 150);
+      const data = {
+        id: uid(),
+        type: 'event',
+        eventName: name,
+        eventDate: dateStr,
+        fontSize: 18,
+        x: pos.x,
+        y: pos.y,
+        z: nextZ(),
+      };
+      elements.push(data);
+      save();
+      renderElement(data);
+      selectElement(data.id);
+    }
+
+    function addChecklist(name, taskTexts) {
+      const pos = nextPosition(240, 180);
+      const data = {
+        id: uid(),
+        type: 'checklist',
+        name: name,
+        tasks: taskTexts.map((t) => ({ id: uid(), text: t, done: false })),
+        fontSize: 16,
+        x: pos.x,
+        y: pos.y,
+        z: nextZ(),
+      };
+      elements.push(data);
+      save();
+      renderElement(data);
+      selectElement(data.id);
+    }
+
+    /* ---------- Drag ---------- */
+
+    function attachDragHandlers(el, data) {
+      let dragging = false;
+      let startPx, startPy, startX, startY;
+
+      el.addEventListener('pointerdown', (e) => {
+        if (e.target.classList.contains('resize-handle')) return;
+        if (e.target.classList.contains('btn-delete')) return;
+        if (e.target.classList.contains('color-input')) return;
+        if (e.target.closest('.checklist-task')) return;
+        if (e.target.closest('.checklist-add')) return;
+        if (el.isContentEditable) return;
+        if (e.target.isContentEditable) return;
+        if (e.button !== 0) return;
+
+        selectElement(data.id);
+        dragging = true;
+        startPx = e.clientX;
+        startPy = e.clientY;
+        startX = data.x;
+        startY = data.y;
+        el.classList.add('is-dragging');
+        el.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+
+      el.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        data.x = startX + (e.clientX - startPx);
+        data.y = startY + (e.clientY - startPy);
+        el.style.left = data.x + 'px';
+        el.style.top = data.y + 'px';
+      });
+
+      const end = () => {
+        if (!dragging) return;
+        dragging = false;
+        el.classList.remove('is-dragging');
+        saveSoon();
+      };
+      el.addEventListener('pointerup', end);
+      el.addEventListener('pointercancel', end);
+    }
+
+    /* ---------- Resize ---------- */
+
+    function attachResizeHandlers(el, handle, data) {
+      let resizing = false;
+      let startPx, startW, startH, startFs;
+
+      handle.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        resizing = true;
+        startPx = e.clientX;
+        if (data.type === 'image') {
+          startW = data.width;
+          startH = data.height;
+        } else {
+          startFs = data.fontSize || 24;
+        }
+        handle.setPointerCapture(e.pointerId);
+        selectElement(data.id);
+      });
+
+      handle.addEventListener('pointermove', (e) => {
+        if (!resizing) return;
+        const dx = e.clientX - startPx;
+        if (data.type === 'image') {
+          const ratio = startW / startH;
+          const newW = Math.max(40, startW + dx);
+          const newH = newW / ratio;
+          data.width = newW;
+          data.height = newH;
+          el.style.width = newW + 'px';
+          el.style.height = newH + 'px';
+        } else {
+          const newFs = Math.max(8, Math.min(240, startFs + dx * 0.5));
+          data.fontSize = newFs;
+          el.style.fontSize = newFs + 'px';
+        }
+      });
+
+      const end = () => {
+        if (!resizing) return;
+        resizing = false;
+        saveSoon();
+      };
+      handle.addEventListener('pointerup', end);
+      handle.addEventListener('pointercancel', end);
+    }
+
+    /* ---------- Editar texto ---------- */
+
+    function attachEditHandlers(el, data) {
+      el.addEventListener('dblclick', (e) => {
+        if (e.target.classList.contains('color-input')) return;
+        if (e.target.classList.contains('resize-handle')) return;
+        if (e.target.classList.contains('btn-delete')) return;
+        startEditing(el, data, true);
+      });
+    }
+
+    function startEditing(el, data, selectAll) {
+      el.contentEditable = 'true';
+      el.focus();
+      if (selectAll) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        // No incluir el color picker / handle / botón delete en la selección visible
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        // Acotar la selección al primer text node si lo hay
+        if (el.firstChild && el.firstChild.nodeType === 3) {
+          const r2 = document.createRange();
+          r2.selectNodeContents(el.firstChild);
+          sel.removeAllRanges();
+          sel.addRange(r2);
+        }
+      }
+
+      const finish = () => {
+        el.contentEditable = 'false';
+        // innerText respeta display:none de los hijos auxiliares y normaliza saltos de linea
+        const text = (el.innerText || '').replace(/ /g, ' ').trim() || 'Texto';
+        data.content = text;
+        // Capturar referencias a hijos auxiliares antes de limpiar el texto
+        const aux = Array.from(el.children);
+        el.textContent = text;
+        for (const c of aux) el.appendChild(c);
+        saveSoon();
+        el.removeEventListener('blur', finish);
+        el.removeEventListener('keydown', onKey);
+      };
+
+      const onKey = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          el.blur();
+        }
+      };
+
+      el.addEventListener('blur', finish);
+      el.addEventListener('keydown', onKey);
+    }
+
+    /* ---------- Checklist: render e interacciones ---------- */
+
+    function renderChecklistContent(el, data) {
+      let body = el.querySelector('.checklist-body');
+      if (!body) {
+        body = document.createElement('div');
+        body.className = 'checklist-body';
+        el.appendChild(body);
+      }
+      body.innerHTML = '';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'checklist-name';
+      nameEl.textContent = data.name || 'Checklist';
+      nameEl.title = 'Doble click para editar';
+      body.appendChild(nameEl);
+
+      const tasksUl = document.createElement('ul');
+      tasksUl.className = 'checklist-tasks';
+      for (const task of data.tasks) {
+        tasksUl.appendChild(buildTaskRow(task));
+      }
+      body.appendChild(tasksUl);
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'checklist-add';
+      addBtn.textContent = '+ Agregar tarea';
+      body.appendChild(addBtn);
+    }
+
+    function buildTaskRow(task) {
+      const li = document.createElement('li');
+      li.className = 'checklist-task' + (task.done ? ' is-done' : '');
+      li.dataset.taskId = task.id;
+      const check = document.createElement('span');
+      check.className = 'task-check';
+      li.appendChild(check);
+      const textSpan = document.createElement('span');
+      textSpan.className = 'task-text';
+      textSpan.textContent = task.text;
+      li.appendChild(textSpan);
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'task-remove';
+      removeBtn.title = 'Quitar tarea';
+      removeBtn.textContent = '×';
+      li.appendChild(removeBtn);
+      return li;
+    }
+
+    function attachChecklistHandlers(el, data) {
+      el.addEventListener('click', (e) => {
+        // Si hay edición en curso, dejar que el blur maneje el commit
+        if (el.querySelector('[contenteditable="true"]')) return;
+
+        const removeBtn = e.target.closest('.task-remove');
+        if (removeBtn) {
+          e.stopPropagation();
+          const li = removeBtn.closest('.checklist-task');
+          const taskId = li && li.dataset.taskId;
+          if (!taskId) return;
+          data.tasks = data.tasks.filter(t => t.id !== taskId);
+          renderChecklistContent(el, data);
+          saveSoon();
+          return;
+        }
+
+        if (e.target.closest('.checklist-add')) {
+          e.stopPropagation();
+          const newTask = { id: uid(), text: 'Nueva tarea', done: false };
+          data.tasks.push(newTask);
+          renderChecklistContent(el, data);
+          saveSoon();
+          const newTextEl = el.querySelector(`[data-task-id="${newTask.id}"] .task-text`);
+          if (newTextEl) {
+            startInlineEdit(newTextEl, (text) => {
+              const t = data.tasks.find(x => x.id === newTask.id);
+              if (!t) return;
+              t.text = text || 'Nueva tarea';
+              newTextEl.textContent = t.text;
+              saveSoon();
+            });
+          }
+          return;
+        }
+
+        const taskRow = e.target.closest('.checklist-task');
+        if (taskRow) {
+          const taskId = taskRow.dataset.taskId;
+          const task = data.tasks.find(t => t.id === taskId);
+          if (!task) return;
+          task.done = !task.done;
+          taskRow.classList.toggle('is-done', task.done);
+          saveSoon();
+        }
+      });
+
+      el.addEventListener('dblclick', (e) => {
+        const taskTextEl = e.target.closest('.task-text');
+        if (taskTextEl) {
+          e.stopPropagation();
+          const li = taskTextEl.closest('.checklist-task');
+          const taskId = li && li.dataset.taskId;
+          const task = data.tasks.find(t => t.id === taskId);
+          if (!task) return;
+          startInlineEdit(taskTextEl, (text) => {
+            task.text = text || task.text;
+            taskTextEl.textContent = task.text;
+            saveSoon();
+          });
+          return;
+        }
+        const nameEl = e.target.closest('.checklist-name');
+        if (nameEl) {
+          e.stopPropagation();
+          startInlineEdit(nameEl, (text) => {
+            data.name = text || data.name;
+            nameEl.textContent = data.name;
+            saveSoon();
+          });
+        }
+      });
+    }
+
+    function startInlineEdit(targetEl, onCommit) {
+      targetEl.contentEditable = 'true';
+      targetEl.focus();
+      const range = document.createRange();
+      range.selectNodeContents(targetEl);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      let committed = false;
+      const finish = () => {
+        if (committed) return;
+        committed = true;
+        targetEl.contentEditable = 'false';
+        const text = (targetEl.innerText || '').replace(/ /g, ' ').trim();
+        targetEl.removeEventListener('blur', finish);
+        targetEl.removeEventListener('keydown', onKey);
+        onCommit(text);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Enter' || e.key === 'Escape') {
+          e.preventDefault();
+          targetEl.blur();
+        }
+      };
+      targetEl.addEventListener('blur', finish);
+      targetEl.addEventListener('keydown', onKey);
+    }
+
+    /* ---------- Eliminar ---------- */
+
+    function deleteElement(id) {
+      const idx = elements.findIndex(e => e.id === id);
+      if (idx < 0) return;
+      elements.splice(idx, 1);
+      if (selectedId === id) selectedId = null;
+      const el = canvasEl.querySelector(`[data-id="${id}"]`);
+      if (el) el.remove();
+      save();
+    }
+
+    /* ---------- Sidebar ---------- */
+
+    function toggleSidebar() {
+      document.body.classList.toggle('sidebar--hidden');
+    }
+
+    btnImage.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) addImageFromFile(file);
+      e.target.value = '';
+    });
+    btnText.addEventListener('click', addText);
+    btnEvent.addEventListener('click', openEventModal);
+    btnTheme.addEventListener('click', toggleTheme);
+    btnToggle.addEventListener('click', toggleSidebar);
+
+    /* ---------- Modo oscuro ---------- */
+
+    const THEME_KEY = 'yearadvance:theme';
+
+    function applyTheme(theme) {
+      const dark = theme === 'dark';
+      document.body.classList.toggle('dark', dark);
+      btnTheme.textContent = dark ? '☀️' : '🌙';
+      btnTheme.title = dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
+      try { localStorage.setItem(THEME_KEY, theme); } catch {}
+    }
+
+    function toggleTheme() {
+      const isDark = document.body.classList.contains('dark');
+      applyTheme(isDark ? 'light' : 'dark');
+    }
+
+    (function initTheme() {
+      let saved = null;
+      try { saved = localStorage.getItem(THEME_KEY); } catch {}
+      applyTheme(saved === 'dark' ? 'dark' : 'light');
+    })();
+
+    /* ---------- Modal de evento ---------- */
+
+    function openEventModal() {
+      eventNameInput.value = '';
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      eventDateInput.value = `${yyyy}-${mm}-${dd}`;
+      eventModal.hidden = false;
+      eventModal.setAttribute('aria-hidden', 'false');
+      setTimeout(() => eventNameInput.focus(), 0);
+    }
+
+    function closeEventModal() {
+      eventModal.hidden = true;
+      eventModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function submitEventModal() {
+      const name = eventNameInput.value.trim();
+      const date = eventDateInput.value;
+      if (!name) {
+        eventNameInput.focus();
+        return;
+      }
+      if (!date) {
+        eventDateInput.focus();
+        return;
+      }
+      addEvent(name, date);
+      closeEventModal();
+    }
+
+    eventCancelBtn.addEventListener('click', closeEventModal);
+    eventSubmitBtn.addEventListener('click', submitEventModal);
+    eventModal.addEventListener('click', (e) => {
+      if (e.target === eventModal) closeEventModal();
+    });
+    eventNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); submitEventModal(); }
+    });
+    eventDateInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); submitEventModal(); }
+    });
+
+    /* ---------- Modal de checklist ---------- */
+
+    function openChecklistModal() {
+      checklistNameInput.value = '';
+      checklistTasksList.innerHTML = '';
+      addTaskInputRow('');
+      checklistModal.hidden = false;
+      checklistModal.setAttribute('aria-hidden', 'false');
+      setTimeout(() => checklistNameInput.focus(), 0);
+    }
+
+    function closeChecklistModal() {
+      checklistModal.hidden = true;
+      checklistModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function addTaskInputRow(text) {
+      const row = document.createElement('div');
+      row.className = 'task-input-row';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 120;
+      input.placeholder = 'Tarea';
+      input.value = text || '';
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'task-row-remove';
+      removeBtn.textContent = '×';
+      removeBtn.title = 'Quitar tarea';
+      removeBtn.addEventListener('click', () => {
+        if (checklistTasksList.children.length > 1) {
+          row.remove();
+        } else {
+          input.value = '';
+          input.focus();
+        }
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (input.value.trim() === '' && checklistTasksList.children.length > 0) {
+            submitChecklistModal();
+          } else {
+            addTaskInputRow('');
+          }
+        }
+      });
+      row.appendChild(input);
+      row.appendChild(removeBtn);
+      checklistTasksList.appendChild(row);
+      setTimeout(() => input.focus(), 0);
+    }
+
+    function submitChecklistModal() {
+      const name = checklistNameInput.value.trim();
+      if (!name) {
+        checklistNameInput.focus();
+        return;
+      }
+      const tasks = Array.from(checklistTasksList.querySelectorAll('input'))
+        .map(i => i.value.trim())
+        .filter(t => t.length > 0);
+      if (tasks.length === 0) {
+        const firstInput = checklistTasksList.querySelector('input');
+        if (firstInput) firstInput.focus();
+        return;
+      }
+      addChecklist(name, tasks);
+      closeChecklistModal();
+    }
+
+    btnChecklist.addEventListener('click', openChecklistModal);
+    checklistCancelBtn.addEventListener('click', closeChecklistModal);
+    checklistSubmitBtn.addEventListener('click', submitChecklistModal);
+    checklistAddTaskBtn.addEventListener('click', () => addTaskInputRow(''));
+    checklistModal.addEventListener('click', (e) => {
+      if (e.target === checklistModal) closeChecklistModal();
+    });
+    checklistNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const firstTask = checklistTasksList.querySelector('input');
+        if (firstTask) firstTask.focus();
+      }
+    });
+
+    /* ---------- Modal de compartir ---------- */
+
+    function openShareModal() {
+      const link = buildShareURL();
+      const totalShareable = serializeForShare().length;
+      const totalImages = elements.filter(e => e.type === 'image').length;
+
+      if (!link) {
+        shareLinkArea.value = '';
+        shareEmpty.hidden = false;
+        shareHint.hidden = true;
+        shareCopyBtn.disabled = true;
+      } else {
+        shareLinkArea.value = link;
+        shareEmpty.hidden = true;
+        shareHint.hidden = false;
+        shareCopyBtn.disabled = false;
+        // Indicar cuántas imágenes quedan afuera
+        const base = `Cualquiera con este link va a ver tu canvas con los mismos textos, eventos y checklists en las mismas posiciones.`;
+        const imgNote = totalImages > 0
+          ? ` <br><strong>${totalImages} ${totalImages === 1 ? 'imagen' : 'imágenes'} no se ${totalImages === 1 ? 'incluye' : 'incluyen'}</strong> porque pesan demasiado para una URL.`
+          : ` <br><strong>Las imágenes no se incluyen</strong> porque pesan demasiado para una URL.`;
+        shareHint.innerHTML = base + imgNote;
+      }
+
+      shareModal.hidden = false;
+      shareModal.setAttribute('aria-hidden', 'false');
+      setTimeout(() => {
+        if (link) {
+          shareLinkArea.focus();
+          shareLinkArea.select();
+        } else {
+          shareCancelBtn.focus();
+        }
+      }, 0);
+    }
+
+    function closeShareModal() {
+      shareModal.hidden = true;
+      shareModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function copyShareLink() {
+      const link = shareLinkArea.value;
+      if (!link) return;
+      const fallbackCopy = () => {
+        try {
+          shareLinkArea.focus();
+          shareLinkArea.select();
+          document.execCommand('copy');
+          showToast('Link copiado al portapapeles');
+        } catch {
+          showToast('No se pudo copiar — seleccioná y copiá manualmente');
+        }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link)
+          .then(() => showToast('Link copiado al portapapeles'))
+          .catch(fallbackCopy);
+      } else {
+        fallbackCopy();
+      }
+    }
+
+    btnShare.addEventListener('click', openShareModal);
+    shareCancelBtn.addEventListener('click', closeShareModal);
+    shareCopyBtn.addEventListener('click', copyShareLink);
+    shareModal.addEventListener('click', (e) => {
+      if (e.target === shareModal) closeShareModal();
+    });
+
+    /* ---------- Banner de vista compartida ---------- */
+
+    function showShareBanner() {
+      const count = elements.length;
+      const noun = count === 1 ? 'elemento' : 'elementos';
+      shareBannerText.textContent = `Estás viendo un canvas compartido (${count} ${noun})`;
+      shareBanner.hidden = false;
+      document.body.classList.add('shared-view');
+    }
+
+    function hideShareBanner() {
+      shareBanner.hidden = true;
+      document.body.classList.remove('shared-view');
+    }
+
+    function keepSharedCanvas() {
+      const ok = confirm('Esto va a reemplazar tu canvas actual con el contenido compartido. ¿Continuar?');
+      if (!ok) return;
+      viewingShared = false;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(elements));
+      } catch (err) {
+        showToast('No se pudo guardar (¿espacio lleno?).');
+        viewingShared = true;
+        return;
+      }
+      clearShareParam();
+      hideShareBanner();
+      showToast('Canvas guardado. Ahora es tuyo.');
+    }
+
+    function closeSharedView() {
+      clearShareParam();
+      // Recargar para volver al canvas original sin riesgo de estado mezclado
+      window.location.reload();
+    }
+
+    bannerKeepBtn.addEventListener('click', keepSharedCanvas);
+    bannerCloseBtn.addEventListener('click', closeSharedView);
+
+    /* ---------- Pegar desde portapapeles ---------- */
+
+    document.addEventListener('paste', (e) => {
+      const ae = document.activeElement;
+      if (ae && ae.isContentEditable) return;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+      if (!eventModal.hidden || !shareModal.hidden || !checklistModal.hidden) return;
+      if (viewingShared) return;
+      const items = (e.clipboardData && e.clipboardData.items) || [];
+      for (const item of items) {
+        if (item.type && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            addImageFromFile(file);
+            return;
+          }
+        }
+      }
+    });
+
+    /* ---------- Atajos de teclado ---------- */
+
+    document.addEventListener('keydown', (e) => {
+      const ae = document.activeElement;
+      const editing = ae && ae.isContentEditable;
+      const modalOpen = !eventModal.hidden || !shareModal.hidden || !checklistModal.hidden;
+      const inFormInput = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+
+      if (e.key === 'Escape') {
+        if (!eventModal.hidden) {
+          closeEventModal();
+          e.preventDefault();
+        } else if (!checklistModal.hidden) {
+          closeChecklistModal();
+          e.preventDefault();
+        } else if (!shareModal.hidden) {
+          closeShareModal();
+          e.preventDefault();
+        } else if (editing) {
+          e.preventDefault();
+          ae.blur();
+        } else {
+          deselect();
+        }
+        return;
+      }
+
+      if (modalOpen || editing || inFormInput) return;
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedId) {
+          deleteElement(selectedId);
+          e.preventDefault();
+        }
+        return;
+      }
+
+      if ((e.key === 'h' || e.key === 'H') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        toggleSidebar();
+      }
+    });
+
+    /* ---------- Click fuera para deseleccionar ---------- */
+
+    document.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.el')) return;
+      if (e.target.closest('#sidebar')) return;
+      if (e.target.closest('#btn-toggle')) return;
+      if (e.target.closest('#event-modal')) return;
+      if (e.target.closest('#checklist-modal')) return;
+      if (e.target.closest('#share-modal')) return;
+      if (e.target.closest('#share-banner')) return;
+      deselect();
+    });
+
+    /* ---------- Init ---------- */
+
+    load();
+    renderAll();
+    if (viewingShared) showShareBanner();
+  </script>
+</body>
+</html>
